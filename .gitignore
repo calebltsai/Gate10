@@ -1,0 +1,16 @@
+.vs/
+# Ignore the entire build directory (executables, cmake files, etc.)
+/geant4.11-build/
+
+# Ignore ROOT files, log files, and data outputs
+*.root
+*.ntuple
+*.csv
+*.log
+
+# Ignore UI macro outputs if they generate large files
+/output/
+/out/
+
+# Ignore Mac/Linux system junk
+.DS_Store
