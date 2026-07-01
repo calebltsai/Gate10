@@ -1,6 +1,7 @@
 .vs/
 # Ignore the entire build directory (executables, cmake files, etc.)
-/geant4.11-build/
+*build/
+*install/
 
 # Ignore ROOT files, log files, and data outputs
 *.root
@@ -12,5 +13,5 @@
 /output/
 /out/
 
-# Ignore Mac/Linux system junk
+# Ignore  Mac/Linux system junk
 .DS_Store
