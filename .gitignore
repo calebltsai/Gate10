@@ -2,6 +2,7 @@
 # Ignore the entire build directory (executables, cmake files, etc.)
 *build/
 *install/
+*env/
 
 # Ignore ROOT files, log files, and data outputs
 *.root
