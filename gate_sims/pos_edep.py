@@ -7,13 +7,14 @@ import numpy as np
 
 from opengate.actors.filters import GateFilterBuilder
 
-def run_annihilation_simulation():
+def run_edep_simulation():
     print("=== Phase 1: Running GATE 10 Simulation ===")
     
     # Initialize Simulation
     sim = gate.Simulation()
     sim.output_dir = "./out"
     sim.number_of_threads = 1
+    sim.random_seed = "auto"
     sim.run_timing_intervals = [[0.0, 10*gate.g4_units.second]]
 
     # Shortcuts for units
@@ -23,12 +24,12 @@ def run_annihilation_simulation():
 
     # Geometry
     world = sim.world
-    world.size = [5 * cm, 5 * cm, 5 * cm]
+    world.size = [4 * cm, 4 * cm, 4 * cm]
     
-    Annihilation_box = sim.add_volume("Box", "Annihilation_Box")
-    Annihilation_box.size = [2 * cm, 2 * cm, 2 * cm]
-    Annihilation_box.material = "G4_ADIPOSE_TISSUE_ICRP"
-    Annihilation_box.color = [0, 0, 1, 1]  # Blue
+    phantom_box = sim.add_volume("Box", "Phantom_Box")
+    phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
+    phantom_box.material = "G4_WATER"
+    phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # Physics Configuration
     sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
@@ -39,27 +40,30 @@ def run_annihilation_simulation():
     source.position.type = "point"
     source.activity = 100000*Bq
     source.energy.type = "mono"
+    source.direction.type = "iso"
     source.energy.mono = 1 * MeV
 
     # Actor Configuration
-    ps_actor = sim.add_actor("PhaseSpaceActor", "AnnihilationTracker")
-    ps_actor.attached_to = "world"
-    ps_actor.output_filename = "annihilation_data.root"
+    ps_actor = sim.add_actor("PhaseSpaceActor", "edepTracker")
+    ps_actor.attached_to = "Phantom_Box"
+    ps_actor.output_filename = "edep.root"
     
     # GATE 10 standard naming attributes for PhaseSpace
     ps_actor.attributes = [
+        "ParticleName",
         "KineticEnergy",
-        "ParticleName"
+        "TotalEnergyDeposit",
+        "ProcessDefinedStep"
     ]
     ps_actor.steps_to_store = "all"
 
-    f_creation = GateFilterBuilder()
+    f_action = GateFilterBuilder()
     
-    # Filter: Capture gammas created explicitly by the 'annihil' process
-    annihilation_filter = (f_creation.ParticleName == "gamma") & (f_creation.KineticEnergy >= 0.510*MeV)
+    # Filter: Capture edep energy and process
+    edep_filter = (f_action.ParticleName == "e+")
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
-    ps_actor.filter = annihilation_filter
+    ps_actor.filter = edep_filter
 
     # Execute simulation
     sim.run()
@@ -76,24 +80,24 @@ def analyze_and_export_to_csv(path):
 
     # Open the compiled ROOT file tree
     file = uproot.open(root_file_path)
-    tree = file["AnnihilationTracker"]
+    tree = file["edepTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["KineticEnergy", "ParticleName"], library="pd")
+    df = tree.arrays(["TotalEnergyDeposit", "ParticleName", "ProcessDefinedStep"], library="pd")
 
-    # Filter to strictly isolate gamma rays created by positron annihilation in water
-    annihilation_data = df[(df["ParticleName"] == "gamma")]
+    # Filter to strictly isolate positron in water
+    edep_data = df[(df["ParticleName"] == "e+")]
 
     # Drop the string filtering columns to keep the file size minimal for MATLAB
-    # This leaves you with a clean array/vector of your target kinetic energies
-    csv_ready_data = annihilation_data[["KineticEnergy"]]
+    # This leaves you with a clean table of your relevant data
+    csv_ready_data = edep_data[["TotalEnergyDeposit", "ProcessDefinedStep"]]
 
     if len(csv_ready_data) == 0:
-        print("Warning: Zero filtered annihilation tracks found. Nothing written.")
+        print("Warning: Zero edep actions found. Nothing written.")
         return
 
     # Export to a standard CSV file (index=False prevents extra index column injection)
-    output_csv_path = "./out/adipose_tissue_ICRP_annihilation_energies.csv"
+    output_csv_path = "./out/water_edep.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
@@ -101,5 +105,5 @@ def analyze_and_export_to_csv(path):
 
 if __name__ == "__main__":
     # Execute the entire automated workflow
-    filepath = run_annihilation_simulation()
+    filepath = run_edep_simulation()
     analyze_and_export_to_csv(filepath)

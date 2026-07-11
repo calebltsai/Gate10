@@ -14,6 +14,7 @@ def run_annihilation_simulation():
     sim = gate.Simulation()
     sim.output_dir = "./out"
     sim.number_of_threads = 1
+    sim.random_seed = "auto"
     sim.run_timing_intervals = [[0.0, 10*gate.g4_units.second]]
 
     # Shortcuts for units
@@ -23,12 +24,12 @@ def run_annihilation_simulation():
 
     # Geometry
     world = sim.world
-    world.size = [5 * cm, 5 * cm, 5 * cm]
+    world.size = [4 * cm, 4 * cm, 4 * cm]
     
-    Annihilation_box = sim.add_volume("Box", "Annihilation_Box")
-    Annihilation_box.size = [2 * cm, 2 * cm, 2 * cm]
-    Annihilation_box.material = "G4_ADIPOSE_TISSUE_ICRP"
-    Annihilation_box.color = [0, 0, 1, 1]  # Blue
+    phantom_box = sim.add_volume("Box", "Phantom_Box")
+    phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
+    phantom_box.material = "G4_WATER"
+    phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # Physics Configuration
     sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
@@ -39,27 +40,29 @@ def run_annihilation_simulation():
     source.position.type = "point"
     source.activity = 100000*Bq
     source.energy.type = "mono"
+    source.direction.type = "iso"
     source.energy.mono = 1 * MeV
 
     # Actor Configuration
-    ps_actor = sim.add_actor("PhaseSpaceActor", "AnnihilationTracker")
+    ps_actor = sim.add_actor("PhaseSpaceActor", "RangeTracker")
     ps_actor.attached_to = "world"
-    ps_actor.output_filename = "annihilation_data.root"
+    ps_actor.output_filename = "pos_range.root"
     
     # GATE 10 standard naming attributes for PhaseSpace
     ps_actor.attributes = [
         "KineticEnergy",
-        "ParticleName"
+        "ParticleName",
+        "PrePosition"
     ]
     ps_actor.steps_to_store = "all"
 
     f_creation = GateFilterBuilder()
     
-    # Filter: Capture gammas created explicitly by the 'annihil' process
-    annihilation_filter = (f_creation.ParticleName == "gamma") & (f_creation.KineticEnergy >= 0.510*MeV)
+    # Filter: Capture distances from origin of explicit creation of gammas by the 'annihil' process
+    creation_filter = (f_creation.ParticleName == "gamma") & (f_creation.KineticEnergy >= 0.510*MeV)
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
-    ps_actor.filter = annihilation_filter
+    ps_actor.filter = creation_filter
 
     # Execute simulation
     sim.run()
@@ -76,24 +79,24 @@ def analyze_and_export_to_csv(path):
 
     # Open the compiled ROOT file tree
     file = uproot.open(root_file_path)
-    tree = file["AnnihilationTracker"]
+    tree = file["RangeTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["KineticEnergy", "ParticleName"], library="pd")
+    df = tree.arrays(["KineticEnergy", "ParticleName", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
 
     # Filter to strictly isolate gamma rays created by positron annihilation in water
-    annihilation_data = df[(df["ParticleName"] == "gamma")]
+    range_data = df[(df["ParticleName"] == "gamma")]
 
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean array/vector of your target kinetic energies
-    csv_ready_data = annihilation_data[["KineticEnergy"]]
+    csv_ready_data = range_data[["PrePosition_X", "PrePosition_Y", "PrePosition_Z"]]
 
     if len(csv_ready_data) == 0:
         print("Warning: Zero filtered annihilation tracks found. Nothing written.")
         return
 
-    # Export to a standard CSV file (index=False prevents extra index column injection)
-    output_csv_path = "./out/adipose_tissue_ICRP_annihilation_energies.csv"
+    # Export to a standard CSV file (index=False prevents exdeacttra index column injection)
+    output_csv_path = "./out/water_range.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
