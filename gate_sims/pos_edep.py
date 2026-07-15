@@ -7,7 +7,9 @@ import numpy as np
 
 from opengate.actors.filters import GateFilterBuilder
 
-def run_edep_simulation():
+initenergy = np.linspace(0.1,1,10)
+
+def run_edep_simulation(sourceenergy):
     print("=== Phase 1: Running GATE 10 Simulation ===")
     
     # Initialize Simulation
@@ -15,7 +17,7 @@ def run_edep_simulation():
     sim.output_dir = "./out"
     sim.number_of_threads = 1
     sim.random_seed = "auto"
-    sim.run_timing_intervals = [[0.0, 10*gate.g4_units.second]]
+    sim.run_timing_intervals = [[0.0, 5*gate.g4_units.second]]
 
     # Shortcuts for units
     cm = gate.g4_units.cm
@@ -41,7 +43,7 @@ def run_edep_simulation():
     source.activity = 100000*Bq
     source.energy.type = "mono"
     source.direction.type = "iso"
-    source.energy.mono = 1 * MeV
+    source.energy.mono = sourceenergy * MeV
 
     # Actor Configuration
     ps_actor = sim.add_actor("PhaseSpaceActor", "edepTracker")
@@ -66,12 +68,12 @@ def run_edep_simulation():
     ps_actor.filter = edep_filter
 
     # Execute simulation
-    sim.run()
+    sim.run(start_new_process=True)
     print("=== Simulation Complete! ===\n")
     return ps_actor.get_output_path()
 
 
-def analyze_and_export_to_csv(path):
+def analyze_and_export_to_csv(path, sourceenergy):
     print("=== Phase 2: Converting ROOT Trees to CSV Data Sheet ===")
     root_file_path = path
     
@@ -90,14 +92,14 @@ def analyze_and_export_to_csv(path):
 
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean table of your relevant data
-    csv_ready_data = edep_data[["TotalEnergyDeposit", "ProcessDefinedStep"]]
+    csv_ready_data = edep_data[["ParticleName", "TotalEnergyDeposit", "ProcessDefinedStep"]]
 
     if len(csv_ready_data) == 0:
         print("Warning: Zero edep actions found. Nothing written.")
         return
 
     # Export to a standard CSV file (index=False prevents extra index column injection)
-    output_csv_path = "./out/water_edep.csv"
+    output_csv_path = "./out/"+str(sourceenergy)+"water_edep.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
@@ -105,5 +107,6 @@ def analyze_and_export_to_csv(path):
 
 if __name__ == "__main__":
     # Execute the entire automated workflow
-    filepath = run_edep_simulation()
-    analyze_and_export_to_csv(filepath)
+    for en in initenergy:
+        filepath = run_edep_simulation(en)
+        analyze_and_export_to_csv(filepath, en)
