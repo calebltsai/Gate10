@@ -7,7 +7,10 @@ import numpy as np
 
 from opengate.actors.filters import GateFilterBuilder
 
-def run_annihilation_simulation():
+# for batch run of energy spectrum
+sourceenergy = np.linspace(0, 1, 21)
+
+def run_annihilation_simulation(energyval):
     print("=== Phase 1: Running GATE 10 Simulation ===")
     
     # Initialize Simulation
@@ -41,7 +44,7 @@ def run_annihilation_simulation():
     source.activity = 100000*Bq
     source.energy.type = "mono"
     source.direction.type = "iso"
-    source.energy.mono = 1 * MeV
+    source.energy.mono = energyval * MeV
 
     # Actor Configuration
     ps_actor = sim.add_actor("PhaseSpaceActor", "RangeTracker")
@@ -65,12 +68,12 @@ def run_annihilation_simulation():
     ps_actor.filter = creation_filter
 
     # Execute simulation
-    sim.run()
+    sim.run(start_new_process=True)
     print("=== Simulation Complete! ===\n")
     return ps_actor.get_output_path()
 
 
-def analyze_and_export_to_csv(path):
+def analyze_and_export_to_csv(path, energyval):
     print("=== Phase 2: Converting ROOT Trees to CSV Data Sheet ===")
     root_file_path = path
     
@@ -96,7 +99,7 @@ def analyze_and_export_to_csv(path):
         return
 
     # Export to a standard CSV file (index=False prevents exdeacttra index column injection)
-    output_csv_path = "./out/water_range.csv"
+    output_csv_path = "./out/"+str(energyval)+"MeV_water_range.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
@@ -104,5 +107,6 @@ def analyze_and_export_to_csv(path):
 
 if __name__ == "__main__":
     # Execute the entire automated workflow
-    filepath = run_annihilation_simulation()
-    analyze_and_export_to_csv(filepath)
+    for energy in sourceenergy:
+        filepath = run_annihilation_simulation(energy)
+        analyze_and_export_to_csv(filepath, energy)
