@@ -8,7 +8,7 @@ import numpy as np
 from opengate.actors.filters import GateFilterBuilder
 
 # for batch run of energy spectrum
-sourceenergy = np.linspace(0, 1, 21)
+sourceenergy = np.linspace(0.1, 1, 2)
 
 def run_annihilation_simulation(energyval):
     print("=== Phase 1: Running GATE 10 Simulation ===")
@@ -39,7 +39,7 @@ def run_annihilation_simulation(energyval):
 
     # Positron Source
     source = sim.add_source("GenericSource", "PositronSource")
-    source.particle = "e+"
+    source.particle = "e-"
     source.position.type = "point"
     source.activity = 100000*Bq
     source.energy.type = "mono"
@@ -55,14 +55,16 @@ def run_annihilation_simulation(energyval):
     ps_actor.attributes = [
         "KineticEnergy",
         "ParticleName",
-        "PrePosition"
+        "PrePosition",
+        "ParentID",
+        "EventID"
     ]
     ps_actor.steps_to_store = "all"
 
     f_creation = GateFilterBuilder()
     
     # Filter: Capture distances from origin of explicit creation of gammas by the 'annihil' process
-    creation_filter = (f_creation.ParticleName == "gamma") & (f_creation.KineticEnergy >= 0.510*MeV)
+    creation_filter = (f_creation.ParticleName == "e-") & (f_creation.ParentID == 0)
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
     ps_actor.filter = creation_filter
@@ -85,11 +87,12 @@ def analyze_and_export_to_csv(path, energyval):
     tree = file["RangeTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["KineticEnergy", "ParticleName", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
+    df = tree.arrays(["EventID", "ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
 
     # Filter to strictly isolate gamma rays created by positron annihilation in water
-    range_data = df[(df["ParticleName"] == "gamma")]
-
+    source_e = df[(df["ParentID"] == 0)]
+    range_data = source_e.groupby("EventID").last().reset_index()
+    
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean array/vector of your target kinetic energies
     csv_ready_data = range_data[["PrePosition_X", "PrePosition_Y", "PrePosition_Z"]]
@@ -99,7 +102,7 @@ def analyze_and_export_to_csv(path, energyval):
         return
 
     # Export to a standard CSV file (index=False prevents exdeacttra index column injection)
-    output_csv_path = "./out/"+str(energyval)+"MeV_water_range.csv"
+    output_csv_path = "./out/"+str(energyval)+"MeV_el_water_range.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")

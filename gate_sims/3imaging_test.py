@@ -1,108 +1,110 @@
-import os
+#!/usr/bin/env python3
 import opengate as gate
+import numpy as np
 import uproot
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
 
-from opengate.actors.filters import GateFilterBuilder
-
-def run_3annil_data_sim():
-    print("=== Phase 1: Running GATE 10 Simulation ===")
-    
-    # Initialize Simulation
+def main():
+    # -------------------------------------------------------------------------
+    # 1. Initialize Simulation Manager
+    # -------------------------------------------------------------------------
     sim = gate.Simulation()
-    sim.output_dir = "./out"
-    sim.number_of_threads = 1
-    sim.random_seed = "auto"
-    sim.run_timing_intervals = [[0.0, 10*gate.g4_units.second]]
-
-    # Shortcuts for units
-    cm = gate.g4_units.cm
-    MeV = gate.g4_units.MeV
-    Bq = gate.g4_units.Bq
-
-    # Geometry
-    world = sim.world
-    world.size = [4 * cm, 4 * cm, 4 * cm]
+    sim.set_g4_verbose(False)
+    sim.set_g4_visualisation(False) # Turn True if you want a Geant4 UI window
     
-    phantom_box = sim.add_volume("Box", "Phantom_Box")
-    phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
-    phantom_box.material = "G4_WATER"
-    phantom_box.color = [0, 0, 1, 1]  # Blue
-
-    # Physics Configuration
-    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
-
-    # Positron Source
-    source = sim.add_source("GenericSource", "PositronSource")
-    source.particle = "e+"
-    source.position.type = "point"
-    source.activity = 100000*Bq
-    source.energy.type = "mono"
-    source.direction.type = "iso"
-    source.energy.mono = 1 * MeV
-
-    # Actor Configuration
-    ps_actor = sim.add_actor("PhaseSpaceActor", "RangeTracker")
-    ps_actor.attached_to = "world"
-    ps_actor.output_filename = "pos_range.root"
+    # -------------------------------------------------------------------------
+    # 2. Scanner Geometry (Approximate Siemens Biograph 600)
+    # -------------------------------------------------------------------------
+    # The World volume is automatically instantiated as Air by GATE 10
+    world = sim.volume_manager.get_world_volume()
     
-    # GATE 10 standard naming attributes for PhaseSpace
-    ps_actor.attributes = [
-        "KineticEnergy",
-        "ParticleName",
-        "PrePosition"
-    ]
-    ps_actor.steps_to_store = "all"
-
-    f_creation = GateFilterBuilder()
+    # Define a generic cylindrical PET setup 
+    # Siemens Biograph: Inner ring radius ~421mm, Axial length ~162mm
+    biograph_ring = sim.add_volume("Cylinder", "pet_ring")
+    biograph_ring.parent = world.name
+    biograph_ring.material = "Lead" # Shielding outer wall casing
+    biograph_ring.rmin = 420.0 * gate.mm
+    biograph_ring.rmax = 450.0 * gate.mm
+    biograph_ring.size_z = 162.0 * gate.mm
+    biograph_ring.color = [0.5, 0.5, 0.5, 1.0] # Gray representation
     
-    # Filter: Capture distances from origin of explicit creation of gammas by the 'annihil' process
-    creation_filter = (f_creation.ParticleName == "gamma") & (f_creation.KineticEnergy >= 0.510*MeV)
+    # Add LSO Crystal Ring inside the cylinder casing
+    crystal_layer = sim.add_volume("Cylinder", "lso_crystals")
+    crystal_layer.parent = biograph_ring.name
+    crystal_layer.material = "LSO" # Lutetium Oxyorthosilicate scintillator
+    crystal_layer.rmin = 421.0 * gate.mm
+    crystal_layer.rmax = 441.0 * gate.mm # 20mm crystal thickness
+    crystal_layer.size_z = 162.0 * gate.mm
+    crystal_layer.color = [0.0, 0.8, 0.8, 0.6] # Cyan transparent 
     
-    # Apply the logical filter expression directly to your PhaseSpaceActor
-    ps_actor.filter = creation_filter
-
-    # Execute simulation
-    sim.run()
-    print("=== Simulation Complete! ===\n")
-    return ps_actor.get_output_path()
-
-
-def algo_to_img(path):
-    print("=== Phase 2: Converting ROOT Trees to CSV Data Sheet ===")
-    root_file_path = path
+    # -------------------------------------------------------------------------
+    # 3. Physics Configuration
+    # -------------------------------------------------------------------------
+    # Use standard high-precision standard electromagnetic list (emstandard_opt4)
+    # essential for tracking precise photon interactions and Compton edge resolutions.
+    sim.physics_manager.set_physics_list("G4EmStandardPhysics_option4")
     
-    if not os.path.exists(root_file_path):
-        raise FileNotFoundError(f"Expected ROOT file not found at: {root_file_path}")
-
-    # Open the compiled ROOT file tree
-    file = uproot.open(root_file_path)
-    tree = file["RangeTracker"]
-
-    # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["KineticEnergy", "ParticleName", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
-
-    # Filter to strictly isolate gamma rays created by positron annihilation in water
-    range_data = df[(df["ParticleName"] == "gamma")]
-
-    # Drop the string filtering columns to keep the file size minimal for MATLAB
-    # This leaves you with a clean array/vector of your target kinetic energies
-    csv_ready_data = range_data[["PrePosition_X", "PrePosition_Y", "PrePosition_Z"]]
-
-    if len(csv_ready_data) == 0:
-        print("Warning: Zero filtered annihilation tracks found. Nothing written.")
-        return
-
-    # Export to a standard CSV file (index=False prevents exdeacttra index column injection)
-    output_csv_path = "./out/water_range.csv"
-    csv_ready_data.to_csv(output_csv_path, index=False)
+    # Set electron/photon production cuts inside the tracking medium
+    sim.physics_manager.set_production_cut("lso_crystals", "gamma", 1.0 * gate.mm)
+    sim.physics_manager.set_production_cut("lso_crystals", "e-", 1.0 * gate.mm)
     
-    print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
-    print(f"File destination: {output_csv_path}")
+    # -------------------------------------------------------------------------
+    # 4. Ortho-Positronium Source (3 Gamma Channel)
+    # -------------------------------------------------------------------------
+    # Instead of simulating standard isotope e+ decays that yield back-to-back pairs, 
+    # we initialize a primary particle source tracking specifically the 3-gamma o-Ps decay continuum
+    source = sim.add_source("GenericSource", "ops_source")
+    source.particle = "gamma"
+    source.activity = 50000 * gate.Bq # 50 kHz simulation event execution threshold
+    
+    # Spatial profile: Small centered distribution block inside a phantom container
+    source.position.type = "Sphere"
+    source.position.radius = 2.0 * gate.mm
+    source.position.translation = [0, 0, 0]
+    
+    # Kinematic profile: Map to the 3-gamma continuous energy phase space (Ore-Powell)
+    # GATE 10 uses a dedicated macro-helper binding configuration for Positronium states
+    source.energy.type = "Positronium3G" 
+    source.direction.type = "PositroniumCoplanar" 
+    
+    # -------------------------------------------------------------------------
+    # 5. Digitizer & Output Actors
+    # -------------------------------------------------------------------------
+    # Attach a Hit Actor to map interactions inside the LSO volumes
+    hit_actor = sim.add_actor("DigitizerHitsActor", "hits_recorder")
+    hit_actor.mother = "lso_crystals"
+    hit_actor.output = "biograph_output_hits.root" # Generates data in root canvas
+    
+    # Configure the basic energy resolution characteristics of LSO (12% FWHM at 511)
+    hit_actor.energy_resolution = 0.12
+    hit_actor.energy_reference = 511.0 * gate.keV
+    hit_actor.low_energy_threshold = 200.0 * gate.keV # Ignore low background scatter
+    
+    # -------------------------------------------------------------------------
+    # 6. Execute Simulation Run
+    # -------------------------------------------------------------------------
+    # Set execution time bounds
+    sim.run_timing.start_time = 0.0 * gate.s
+    sim.run_timing.end_time = 1.0 * gate.s # 1 second simulation scale
+    
+    print("Initializing GATE 10 - Geant4 Context Layer...")
+    sim.start()
+    print("Simulation finished. Data saved to biograph_output_hits.root")
+
+def parse_coincidence_data():
+    # Open the ROOT file constructed by GATE 10
+    file = uproot.open("biograph_output_hits.root")
+    hits_tree = file["hits_recorder"]
+
+    # Convert tree data fields directly into a DataFrame
+    df = hits_tree.arrays(["eventID", "edep", "posX", "posY", "posZ"], library="pd")
+
+    # Filter out rows to keep only true triple coincidence instances (events with exactly 3 hits)
+    triple_coincidences = df.groupby("eventID").filter(lambda x: len(x) == 3)
+
+    print(triple_coincidences.head())
 
 if __name__ == "__main__":
-    # Execute the entire automated workflow
-    filepath = run_3annil_data_sim()
-    algo_to_img(filepath)
+    # GATE 10 requires explicitly guarding execution scripts under the __main__ hook 
+    # to safely scale multithreaded worker loops.
+    main()
