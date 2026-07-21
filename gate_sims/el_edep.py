@@ -7,7 +7,7 @@ import numpy as np
 
 from opengate.actors.filters import GateFilterBuilder
 
-initenergy = np.linspace(0.1,1,2)
+initenergy = np.linspace(0.1,1,10)
 
 def run_edep_simulation(sourceenergy):
     print("=== Phase 1: Running GATE 10 Simulation ===")

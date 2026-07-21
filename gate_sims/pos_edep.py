@@ -7,7 +7,7 @@ import numpy as np
 
 from opengate.actors.filters import GateFilterBuilder
 
-initenergy = np.linspace(0.1,1,2)
+initenergy = np.linspace(0.1,1,10)
 
 def run_edep_simulation(sourceenergy):
     print("=== Phase 1: Running GATE 10 Simulation ===")
@@ -99,7 +99,7 @@ def analyze_and_export_to_csv(path, sourceenergy):
         return
 
     # Export to a standard CSV file (index=False prevents extra index column injection)
-    output_csv_path = "./out/pos_edep/"+str(sourceenergy)+"MeV_el_water_edep.csv"
+    output_csv_path = "./out/pos_edep/"+str(sourceenergy)+"MeV_pos_water_edep.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
