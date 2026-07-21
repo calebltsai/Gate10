@@ -3,54 +3,24 @@ import opengate as gate
 import numpy as np
 import uproot
 import pandas as pd
+import opengate.contrib.pet.siemensbiograph as pet_biograph
 
 def main():
-    # -------------------------------------------------------------------------
     # 1. Initialize Simulation Manager
-    # -------------------------------------------------------------------------
     sim = gate.Simulation()
     sim.set_g4_verbose(False)
     sim.set_g4_visualisation(False) # Turn True if you want a Geant4 UI window
     
-    # -------------------------------------------------------------------------
     # 2. Scanner Geometry (Approximate Siemens Biograph 600)
-    # -------------------------------------------------------------------------
-    # The World volume is automatically instantiated as Air by GATE 10
-    world = sim.volume_manager.get_world_volume()
-    
-    # Define a generic cylindrical PET setup 
-    # Siemens Biograph: Inner ring radius ~421mm, Axial length ~162mm
-    biograph_ring = sim.add_volume("Cylinder", "pet_ring")
-    biograph_ring.parent = world.name
-    biograph_ring.material = "Lead" # Shielding outer wall casing
-    biograph_ring.rmin = 420.0 * gate.mm
-    biograph_ring.rmax = 450.0 * gate.mm
-    biograph_ring.size_z = 162.0 * gate.mm
-    biograph_ring.color = [0.5, 0.5, 0.5, 1.0] # Gray representation
-    
-    # Add LSO Crystal Ring inside the cylinder casing
-    crystal_layer = sim.add_volume("Cylinder", "lso_crystals")
-    crystal_layer.parent = biograph_ring.name
-    crystal_layer.material = "LSO" # Lutetium Oxyorthosilicate scintillator
-    crystal_layer.rmin = 421.0 * gate.mm
-    crystal_layer.rmax = 441.0 * gate.mm # 20mm crystal thickness
-    crystal_layer.size_z = 162.0 * gate.mm
-    crystal_layer.color = [0.0, 0.8, 0.8, 0.6] # Cyan transparent 
-    
-    # -------------------------------------------------------------------------
+    pet = pet_biograph.add_pet(sim, "my_pet")
+    singles = pet_biograph.add_digitizer(sim, pet.name, "singles.root", hits_name="Hits", singles_name="Singles") 
+
     # 3. Physics Configuration
-    # -------------------------------------------------------------------------
     # Use standard high-precision standard electromagnetic list (emstandard_opt4)
     # essential for tracking precise photon interactions and Compton edge resolutions.
-    sim.physics_manager.set_physics_list("G4EmStandardPhysics_option4")
+    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
     
-    # Set electron/photon production cuts inside the tracking medium
-    sim.physics_manager.set_production_cut("lso_crystals", "gamma", 1.0 * gate.mm)
-    sim.physics_manager.set_production_cut("lso_crystals", "e-", 1.0 * gate.mm)
-    
-    # -------------------------------------------------------------------------
     # 4. Ortho-Positronium Source (3 Gamma Channel)
-    # -------------------------------------------------------------------------
     # Instead of simulating standard isotope e+ decays that yield back-to-back pairs, 
     # we initialize a primary particle source tracking specifically the 3-gamma o-Ps decay continuum
     source = sim.add_source("GenericSource", "ops_source")

@@ -17,7 +17,7 @@ def run_edep_simulation(sourceenergy):
     sim.output_dir = "./out"
     sim.number_of_threads = 1
     sim.random_seed = "auto"
-    sim.run_timing_intervals = [[0.0, 5*gate.g4_units.second]]
+    sim.run_timing_intervals = [[0.0, 1*gate.g4_units.second]]
 
     # Shortcuts for units
     cm = gate.g4_units.cm
@@ -26,7 +26,7 @@ def run_edep_simulation(sourceenergy):
 
     # Geometry
     world = sim.world
-    world.size = [4 * cm, 4 * cm, 4 * cm]
+    world.size = [3 * cm, 3 * cm, 3 * cm]
     
     phantom_box = sim.add_volume("Box", "Phantom_Box")
     phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
@@ -34,7 +34,7 @@ def run_edep_simulation(sourceenergy):
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # Physics Configuration
-    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
+    sim.physics_manager.physics_list_name = "G4EmDNAPhysics"
 
     # Positron Source
     source = sim.add_source("GenericSource", "PositronSource")
@@ -56,7 +56,6 @@ def run_edep_simulation(sourceenergy):
         "KineticEnergy",
         "TotalEnergyDeposit",
         "ProcessDefinedStep",
-        "TrackID",
         "ParentID"
     ]
     ps_actor.steps_to_store = "all"
@@ -87,12 +86,12 @@ def analyze_and_export_to_csv(path, sourceenergy):
     tree = file["edepTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["TotalEnergyDeposit", "ParticleName", "ProcessDefinedStep", "TrackID"], library="pd")
+    df = tree.arrays(["TotalEnergyDeposit", "ProcessDefinedStep"], library="pd")
     # Filter to strictly isolate positron in water
     edep_data = df
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean table of your relevant data
-    csv_ready_data = edep_data[["ParticleName", "TotalEnergyDeposit", "ProcessDefinedStep"]]
+    csv_ready_data = edep_data[["TotalEnergyDeposit", "ProcessDefinedStep"]]
 
     if len(csv_ready_data) == 0:
         print("Warning: Zero edep actions found. Nothing written.")

@@ -8,7 +8,7 @@ import numpy as np
 from opengate.actors.filters import GateFilterBuilder
 
 # for batch run of energy spectrum
-sourceenergy = np.linspace(0.05, 1, 20)
+sourceenergy = np.arange(0.05, 1, 0.05)
 
 def run_annihilation_simulation(energyval):
     print("=== Phase 1: Running GATE 10 Simulation ===")
@@ -24,47 +24,57 @@ def run_annihilation_simulation(energyval):
     cm = gate.g4_units.cm
     MeV = gate.g4_units.MeV
     Bq = gate.g4_units.Bq
+    Tesla = gate.g4_units.tesla
 
     # Geometry
     world = sim.world
-    world.size = [3 * cm, 3 * cm, 3 * cm]
+    world.size = [4 * cm, 4 * cm, 4 * cm]
     
     phantom_box = sim.add_volume("Box", "Phantom_Box")
     phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
     phantom_box.material = "G4_WATER"
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
+    # Magnetic Field
+    # This sets a magnetic field along the Y-axis
+    mag_field = MagneticField("uniform_field")
+    mag_field.value = [0.0, 0.0, 1.0]   # [Bx, By, Bz] <- relative to the volume's local coordinate system
+    mag_field.volume = "Phantom_Box"
+    sim.fields.append(mag_field)
+
     # Physics Configuration
-    sim.physics_manager.physics_list_name = "G4EmDNAPhysics"
+    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
 
     # Positron Source
-    source = sim.add_source("GenericSource", "ElectronSource")
-    source.particle = "e-"
+    source = sim.add_source("GenericSource", "PositronSource")
+    source.particle = "e+"
     source.position.type = "point"
     source.activity = 100000*Bq
-    source.energy.type = "mono"
+    source.energy.type = "mono" #or 'gauss' and source.energy.sigma_gauss = 0.01 * MeV
     source.direction.type = "iso"
     source.energy.mono = energyval * MeV
 
     # Actor Configuration
     ps_actor = sim.add_actor("PhaseSpaceActor", "RangeTracker")
     ps_actor.attached_to = "world"
-    ps_actor.output_filename = "el_range.root"
+    ps_actor.output_filename = "pos_range_mag_field.root"
     
     # GATE 10 standard naming attributes for PhaseSpace
     ps_actor.attributes = [
         "KineticEnergy",
         "ParticleName",
-        "PostPosition",
-        "ParentID",
-        "EventID"
+        "PrePosition",
+        "ParentID"
     ]
-    ps_actor.steps_to_store = "all"
+    # ps_actor.steps_to_store = "all"
+    ps_actor.steps_to_store = "all" # for positron end
 
     f_creation = GateFilterBuilder()
     
     # Filter: Capture distances from origin of explicit creation of gammas by the 'annihil' process
-    creation_filter = (f_creation.ParticleName == "e-") & (f_creation.ParentID == 0)
+    # creation_filter = (f_creation.ParticleName == "e+") & (f_creation.ParentID == 0)
+    creation_filter = (f_creation.ParticleName == "gamma") & (f_creation.ParentID == 1) & (f_creation.KineticEnergy > 0.51*MeV)
+    ps_actor.filter = creation_filter
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
     ps_actor.filter = creation_filter
@@ -87,22 +97,21 @@ def analyze_and_export_to_csv(path, energyval):
     tree = file["RangeTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["EventID", "ParentID", "KineticEnergy", "PostPosition_X", "PostPosition_Y", "PostPosition_Z"], library="pd")
+    df = tree.arrays(["ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
 
     # Filter to strictly isolate gamma rays created by positron annihilation in water
-    source_e = df
-    range_data = source_e.groupby("EventID").last().reset_index()
+    range_data = df
     
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean array/vector of your target kinetic energies
-    csv_ready_data = range_data[["PostPosition_X", "PostPosition_Y", "PostPosition_Z"]]
+    csv_ready_data = range_data[["PrePosition_X", "PrePosition_Y", "PrePosition_Z"]]
 
     if len(csv_ready_data) == 0:
         print("Warning: Zero filtered annihilation tracks found. Nothing written.")
         return
 
     # Export to a standard CSV file (index=False prevents exdeacttra index column injection)
-    output_csv_path = "./out/el_range/"+str(energyval)+"MeV_el_water_range.csv"
+    output_csv_path = "./out/pos_range_mag_field/"+str(energyval)+"MeV_pos_mag_field_range.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")

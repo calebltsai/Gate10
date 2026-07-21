@@ -9,7 +9,7 @@ import numpy as np
 from opengate.actors.filters import GateFilterBuilder
 
 # for batch run of energy spectrum
-sourceenergy = np.arange(0.05, 1, 0.05)
+sourceenergy = np.linspace(0.05, 1, 20)
 
 def run_annihilation_simulation(energyval):
     print("=== Phase 1: Running GATE 10 Simulation ===")
@@ -19,7 +19,7 @@ def run_annihilation_simulation(energyval):
     sim.output_dir = "./out"
     sim.number_of_threads = 1
     sim.random_seed = "auto"
-    sim.run_timing_intervals = [[0.0, 10*gate.g4_units.second]]
+    sim.run_timing_intervals = [[0.0, 4*gate.g4_units.second]]
 
     # Shortcuts for units
     cm = gate.g4_units.cm
@@ -29,7 +29,7 @@ def run_annihilation_simulation(energyval):
 
     # Geometry
     world = sim.world
-    world.size = [4 * cm, 4 * cm, 4 * cm]
+    world.size = [3 * cm, 3 * cm, 3 * cm]
     
     phantom_box = sim.add_volume("Box", "Phantom_Box")
     phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
@@ -37,18 +37,10 @@ def run_annihilation_simulation(energyval):
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # # Magnetic Field
-    # # This example sets a 10 Tesla field along the Y-axis
-    # magnetic_field_vector = [0.0, 7.0 * Tesla, 0.0]
-    # uniform_field = gate_core.G4UniformMagField(magnetic_field_vector)
-
-    # field_manager = gate_core.G4FieldManager()
-    # field_manager.SetDetectorField(uniform_field)
-    # field_manager.CreateChordFinder(uniform_field) # Ensures proper tracking stepping in the field
-
-    # world.g4_logical_volume.SetFieldManager(field_manager, True) # 'True' pushes the field to all daughter volumes
+    # # Set a 1.5-7 Tesla field along the Z-axis
 
     # Physics Configuration
-    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
+    sim.physics_manager.physics_list_name = "G4EmDNAPhysics"
 
     # Positron Source
     source = sim.add_source("GenericSource", "PositronSource")
@@ -69,7 +61,8 @@ def run_annihilation_simulation(energyval):
         "KineticEnergy",
         "ParticleName",
         "PrePosition",
-        "ParentID"
+        "ParentID",
+        "EventID"
     ]
     # ps_actor.steps_to_store = "all"
     ps_actor.steps_to_store = "all" # for positron end
@@ -78,7 +71,7 @@ def run_annihilation_simulation(energyval):
     
     # Filter: Capture distances from origin of explicit creation of gammas by the 'annihil' process
     # creation_filter = (f_creation.ParticleName == "e+") & (f_creation.ParentID == 0)
-    creation_filter = (f_creation.ParticleName == "gamma") & (f_creation.ParentID == 1) & (f_creation.KineticEnergy > 0.5*MeV)
+    creation_filter = (f_creation.ParticleName == "e+")
     ps_actor.filter = creation_filter
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
@@ -102,10 +95,11 @@ def analyze_and_export_to_csv(path, energyval):
     tree = file["RangeTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
+    df = tree.arrays(["EventID", "ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
 
     # Filter to strictly isolate gamma rays created by positron annihilation in water
     range_data = df
+    range_data = range_data.groupby("EventID").last().reset_index()
     
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean array/vector of your target kinetic energies
