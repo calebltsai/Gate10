@@ -1,6 +1,5 @@
 import os
 import opengate as gate
-import opengate_core as gate_core
 import uproot
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -25,7 +24,6 @@ def run_annihilation_simulation(energyval):
     cm = gate.g4_units.cm
     MeV = gate.g4_units.MeV
     Bq = gate.g4_units.Bq
-    Tesla = gate.g4_units.tesla
 
     # Geometry
     world = sim.world
@@ -36,50 +34,37 @@ def run_annihilation_simulation(energyval):
     phantom_box.material = "G4_WATER"
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
-    # # Magnetic Field
-    # # This example sets a 10 Tesla field along the Y-axis
-    # magnetic_field_vector = [0.0, 7.0 * Tesla, 0.0]
-    # uniform_field = gate_core.G4UniformMagField(magnetic_field_vector)
-
-    # field_manager = gate_core.G4FieldManager()
-    # field_manager.SetDetectorField(uniform_field)
-    # field_manager.CreateChordFinder(uniform_field) # Ensures proper tracking stepping in the field
-
-    # world.g4_logical_volume.SetFieldManager(field_manager, True) # 'True' pushes the field to all daughter volumes
-
     # Physics Configuration
     sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
 
     # Positron Source
-    source = sim.add_source("GenericSource", "PositronSource")
-    source.particle = "e+"
+    source = sim.add_source("GenericSource", "ElectronSource")
+    source.particle = "e-"
     source.position.type = "point"
     source.activity = 100000*Bq
-    source.energy.type = "mono" #or 'gauss' and source.energy.sigma_gauss = 0.01 * MeV
+    source.energy.type = "mono"
     source.direction.type = "iso"
     source.energy.mono = energyval * MeV
 
     # Actor Configuration
     ps_actor = sim.add_actor("PhaseSpaceActor", "RangeTracker")
     ps_actor.attached_to = "world"
-    ps_actor.output_filename = "pos_range.root"
+    ps_actor.output_filename = "el_range.root"
     
     # GATE 10 standard naming attributes for PhaseSpace
     ps_actor.attributes = [
         "KineticEnergy",
         "ParticleName",
         "PrePosition",
-        "ParentID"
+        "ParentID",
+        "EventID"
     ]
-    # ps_actor.steps_to_store = "all"
-    ps_actor.steps_to_store = "all" # for positron end
+    ps_actor.steps_to_store = "all"
 
     f_creation = GateFilterBuilder()
     
     # Filter: Capture distances from origin of explicit creation of gammas by the 'annihil' process
-    # creation_filter = (f_creation.ParticleName == "e+") & (f_creation.ParentID == 0)
-    creation_filter = (f_creation.ParticleName == "gamma") & (f_creation.ParentID == 1) & (f_creation.KineticEnergy > 0.5*MeV)
-    ps_actor.filter = creation_filter
+    creation_filter = (f_creation.ParticleName == "e-") & (f_creation.ParentID == 0)
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
     ps_actor.filter = creation_filter
@@ -102,10 +87,11 @@ def analyze_and_export_to_csv(path, energyval):
     tree = file["RangeTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
+    df = tree.arrays(["EventID", "ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
 
     # Filter to strictly isolate gamma rays created by positron annihilation in water
-    range_data = df
+    source_e = df
+    range_data = source_e.groupby("EventID").last().reset_index()
     
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean array/vector of your target kinetic energies
@@ -116,7 +102,7 @@ def analyze_and_export_to_csv(path, energyval):
         return
 
     # Export to a standard CSV file (index=False prevents exdeacttra index column injection)
-    output_csv_path = "./out/pos_range/"+str(energyval)+"MeV_pos_water_range.csv"
+    output_csv_path = "./out/el_range/"+str(energyval)+"MeV_el_water_range.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")

@@ -37,8 +37,8 @@ def run_edep_simulation(sourceenergy):
     sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
 
     # Positron Source
-    source = sim.add_source("GenericSource", "PositronSource")
-    source.particle = "e+"
+    source = sim.add_source("GenericSource", "ElectronSource")
+    source.particle = "e-"
     source.position.type = "point"
     source.activity = 100000*Bq
     source.energy.type = "mono"
@@ -48,7 +48,7 @@ def run_edep_simulation(sourceenergy):
     # Actor Configuration
     ps_actor = sim.add_actor("PhaseSpaceActor", "edepTracker")
     ps_actor.attached_to = "Phantom_Box"
-    ps_actor.output_filename = "pos_edep.root"
+    ps_actor.output_filename = "el_edep.root"
     
     # GATE 10 standard naming attributes for PhaseSpace
     ps_actor.attributes = [
@@ -56,15 +56,14 @@ def run_edep_simulation(sourceenergy):
         "KineticEnergy",
         "TotalEnergyDeposit",
         "ProcessDefinedStep",
-        "TrackID",
-        "ParentID"
+        "TrackID"
     ]
     ps_actor.steps_to_store = "all"
 
     f_action = GateFilterBuilder()
     
     # Filter: Capture edep energy and process
-    edep_filter = (f_action.ParticleName == "e+") & (f_action.ParentID == 0)
+    edep_filter = (f_action.ParticleName == "e-") & (f_action.TrackID == 1)
     
     # Apply the logical filter expression directly to your PhaseSpaceActor
     ps_actor.filter = edep_filter
@@ -89,7 +88,7 @@ def analyze_and_export_to_csv(path, sourceenergy):
     # Pull out your customized tracking attributes into a DataFrame
     df = tree.arrays(["TotalEnergyDeposit", "ParticleName", "ProcessDefinedStep", "TrackID"], library="pd")
     # Filter to strictly isolate positron in water
-    edep_data = df
+    edep_data = df[(df["ParticleName"] == "e-") & (df["TrackID"] == 1)]
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean table of your relevant data
     csv_ready_data = edep_data[["ParticleName", "TotalEnergyDeposit", "ProcessDefinedStep"]]
@@ -99,7 +98,7 @@ def analyze_and_export_to_csv(path, sourceenergy):
         return
 
     # Export to a standard CSV file (index=False prevents extra index column injection)
-    output_csv_path = "./out/pos_edep/"+str(sourceenergy)+"MeV_el_water_edep.csv"
+    output_csv_path = "./out/el_edep/"+str(sourceenergy)+"MeV_el_water_edep.csv"
     csv_ready_data.to_csv(output_csv_path, index=False)
     
     print(f"Success! {len(csv_ready_data)} events saved successfully to layout matrix.")
