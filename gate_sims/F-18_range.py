@@ -33,8 +33,11 @@ def run_annihilation_simulation():
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # Physics Configuration
-    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
     sim.physics_manager.enable_decay = True
+    sim.physics_manager.set_track_structure_em_physics(
+        volume_name='Phantom_Box', 
+        track_structure_em_physics='G4EmDNAPhysics_option4'
+    )
 
     # Positron Source
     source = sim.add_source("GenericSource", "F18Source")
