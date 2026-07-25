@@ -13,7 +13,7 @@ def run_annihilation_simulation():
     # Initialize Simulation
     sim = gate.Simulation()
     sim.output_dir = "./out"
-    sim.number_of_threads = 1
+    sim.number_of_threads = 6
     sim.random_seed = "auto"
     sim.run_timing_intervals = [[0.0, 4*gate.g4_units.second]]
 
@@ -25,19 +25,20 @@ def run_annihilation_simulation():
 
     # Geometry
     world = sim.world
-    world.size = [3 * cm, 3 * cm, 3 * cm]
+    world.size = [1 * cm, 1 * cm, 1 * cm]
     
     phantom_box = sim.add_volume("Box", "Phantom_Box")
-    phantom_box.size = [2 * cm, 2 * cm, 2 * cm]
+    phantom_box.size = [0.8 * cm, 0.8 * cm, 0.8 * cm]
     phantom_box.material = "G4_WATER"
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # Physics Configuration
     sim.physics_manager.enable_decay = True
-    sim.physics_manager.set_track_structure_em_physics(
-        volume_name='Phantom_Box', 
-        track_structure_em_physics='G4EmDNAPhysics_option4'
-    )
+    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
+    # sim.physics_manager.set_track_structure_em_physics(
+    #     volume_name='Phantom_Box', 
+    #     track_structure_em_physics='G4EmDNAPhysics_option4'
+    # )
 
     # Positron Source
     source = sim.add_source("GenericSource", "F18Source")
@@ -55,7 +56,7 @@ def run_annihilation_simulation():
     ps_actor.attributes = [
         "KineticEnergy",
         "ParticleName",
-        "PrePosition",
+        "PostPosition",
         "ParentID",
         "EventID"
     ]
@@ -66,9 +67,6 @@ def run_annihilation_simulation():
     
     # Filter: Capture distances from origin of positrons from decay process
     creation_filter = (f_creation.ParticleName == "e+")
-    ps_actor.filter = creation_filter
-    
-    # Apply the logical filter expression directly to your PhaseSpaceActor
     ps_actor.filter = creation_filter
 
     # Execute simulation
@@ -89,7 +87,7 @@ def analyze_and_export_to_csv(path):
     tree = file["RangeTracker"]
 
     # Pull out your customized tracking attributes into a DataFrame
-    df = tree.arrays(["EventID", "ParentID", "KineticEnergy", "PrePosition_X", "PrePosition_Y", "PrePosition_Z"], library="pd")
+    df = tree.arrays(["EventID", "ParentID", "KineticEnergy", "PostPosition_X", "PostPosition_Y", "PostPosition_Z"], library="pd")
 
     # Filter to strictly isolate gamma rays created by positron annihilation in water
     range_data = df
@@ -97,7 +95,7 @@ def analyze_and_export_to_csv(path):
     
     # Drop the string filtering columns to keep the file size minimal for MATLAB
     # This leaves you with a clean array/vector of your target kinetic energies
-    csv_ready_data = range_data[["PrePosition_X", "PrePosition_Y", "PrePosition_Z"]]
+    csv_ready_data = range_data[["PostPosition_X", "PostPosition_Y", "PostPosition_Z"]]
 
     if len(csv_ready_data) == 0:
         print("Warning: Zero filtered annihilation tracks found. Nothing written.")

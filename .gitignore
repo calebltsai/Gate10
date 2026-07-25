@@ -3,6 +3,10 @@
 *build/
 *install/
 *env/
+*geant4/
+*ITK/
+*opengate/
+*CMakeFiles/
 
 # Ignore ROOT files, log files, and data outputs
 *.root
