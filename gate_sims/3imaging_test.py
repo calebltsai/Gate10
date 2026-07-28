@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import opengate as gate
 import numpy as np
 import uproot

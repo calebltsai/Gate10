@@ -13,7 +13,7 @@ def run_edep_simulation():
     # Initialize Simulation
     sim = gate.Simulation()
     sim.output_dir = "./out"
-    sim.number_of_threads = 8
+    sim.number_of_threads = 10
     sim.random_seed = "auto"
     sim.run_timing_intervals = [[0.0, 0.1*gate.g4_units.second]]
 
@@ -43,7 +43,7 @@ def run_edep_simulation():
     source = sim.add_source("GenericSource", "Rb82Source")
     source.particle = 'ion 37 82'  # Rubidium82
     source.position.type = "point"
-    source.activity = 100000*Bq
+    source.activity = 50000*Bq
     source.direction.type = "iso"
 
     # Actor Configuration
