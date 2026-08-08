@@ -4,6 +4,8 @@ import uproot
 import pandas as pd
 import opengate.contrib.pet.siemensbiograph as pet_biograph
 
+filename = "biograph_output_hits"
+
 def main():
     # 1. Initialize Simulation Manager
     sim = gate.Simulation()
@@ -42,7 +44,7 @@ def main():
     # Attach a Hit Actor to map interactions inside the LSO volumes
     hit_actor = sim.add_actor("DigitizerHitsActor", "hits_recorder")
     hit_actor.mother = "lso_crystals"
-    hit_actor.output = "biograph_output_hits.root" # Generates data in root canvas
+    hit_actor.output = filename # Generates data in root canvas
     
     # Configure the basic energy resolution characteristics of LSO (12% FWHM at 511)
     hit_actor.energy_resolution = 0.12
@@ -58,11 +60,11 @@ def main():
     
     print("Initializing GATE 10 - Geant4 Context Layer...")
     sim.start()
-    print("Simulation finished. Data saved to biograph_output_hits.root")
+    print("Simulation finished. Data saved to "+filename+".root")
 
 def parse_coincidence_data():
     # Open the ROOT file constructed by GATE 10
-    file = uproot.open("biograph_output_hits.root")
+    file = uproot.open(filename+".root")
     hits_tree = file["hits_recorder"]
 
     # Convert tree data fields directly into a DataFrame

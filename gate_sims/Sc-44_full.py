@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from opengate.actors.filters import GateFilterBuilder
+from opengate.geometry import fields
 
 def run_edep_simulation():
     print("=== Phase 1: Running GATE 10 Simulation ===")
@@ -13,9 +14,9 @@ def run_edep_simulation():
     # Initialize Simulation
     sim = gate.Simulation()
     sim.output_dir = "./out"
-    sim.number_of_threads = 10
+    sim.number_of_threads = 4
     sim.random_seed = "auto"
-    sim.run_timing_intervals = [[0.0, 0.1*gate.g4_units.second]]
+    sim.run_timing_intervals = [[0.0, 1*gate.g4_units.second]]
 
     # Shortcuts for units
     cm = gate.g4_units.cm
@@ -32,12 +33,18 @@ def run_edep_simulation():
     phantom_box.color = [0, 0, 1, 1]  # Blue
 
     # Physics Configuration
-    # sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
     sim.physics_manager.enable_decay = True
-    sim.physics_manager.set_track_structure_em_physics(
-        volume_name='Phantom_Box', 
-        track_structure_em_physics='G4EmDNAPhysics_option4'
-    )
+    sim.physics_manager.physics_list_name = "G4EmStandardPhysics_option4"
+    # sim.physics_manager.set_track_structure_em_physics(
+    #     volume_name='Phantom_Box', 
+    #     track_structure_em_physics='G4EmDNAPhysics_option4'
+    # )
+    sim.physics_manager.user_limits_particles = ['electron', 'positron', 'gamma']
+    sim.physics_manager.set_production_cut("Phantom_Box", "gamma", 0.01 * cm)
+    sim.physics_manager.set_production_cut("Phantom_Box", "electron", 0.005 * cm)
+    sim.physics_manager.set_production_cut("Phantom_Box", "positron", 0.005 * cm)
+    sim.physics_manager.set_max_step_size("Phantom_Box", 0.01 * cm)
+
 
     # Positron Source
     source = sim.add_source("GenericSource", "Sc44Source")
@@ -45,11 +52,17 @@ def run_edep_simulation():
     source.position.type = "point"
     source.activity = 50000*Bq
     source.direction.type = "iso"
+    
+    field = fields.UniformMagneticField(name="B_field_for_box")
+    field.field_vector = [0, 0, 7.0 * gate.g4_units.tesla]
+    field.stepper = "DormandPrince745"  # Or "HelixSimpleRunge"
+    field.delta_chord = 0.005 * cm
+    phantom_box.add_field(field)
 
     # Actor Configuration
     ps_actor = sim.add_actor("PhaseSpaceActor", "FullTracker")
     ps_actor.attached_to = "world"
-    ps_actor.output_filename = "Sc44_full.root"
+    ps_actor.output_filename = "Sc44_7T.root"
     
     # GATE 10 standard naming attributes for PhaseSpace
     ps_actor.attributes = [
@@ -66,7 +79,7 @@ def run_edep_simulation():
     ps_actor.steps_to_store = "all"
 
     # Execute simulation
-    sim.run(start_new_process=True)
+    sim.run()
     print("=== Simulation Complete! ===\n")
     return ps_actor.get_output_path()
 
