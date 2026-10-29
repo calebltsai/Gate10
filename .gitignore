@@ -1,4 +1,8 @@
 .vs/
+*.clang*
+*.txt*
+*cmake*
+
 # Ignore the entire build directory (executables, cmake files, etc.)
 *build/
 *install/
